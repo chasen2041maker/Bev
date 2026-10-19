@@ -1,0 +1,5 @@
+numpy
+matplotlib
+pytest
+# L06 起：CPU 版 PyTorch（笔记本）
+# pip install torch --index-url https://download.pytorch.org/whl/cpu

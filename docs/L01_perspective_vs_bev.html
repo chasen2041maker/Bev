@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>body{margin:0}</style>
+</head>
+<body>
+<title>照片和俯视图</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<style>
+/* Layout: front-camera image (left) and BEV grid (right) of the same scene, sliders below; numbers update live. */
+:root {
+  --bg: #eef1f4; --surface: #ffffff; --ink: #1b222a; --muted: #5b6672; --line: #d5dce3; --chip: #f5f7f9;
+  --sky: #dfe9f3; --ground: #d9dcd3; --lane: #ffffff; --grid: #e6eaee;
+  --car1: #1e66d6; --car2: #e07400; --truck: #6b5b95; --ego: #2b333c;
+  --font-body: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-num: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11161b; --surface: #182029; --ink: #e5eaf0; --muted: #9aa5b1; --line: #2a343e; --chip: #1f2832;
+    --sky: #1c2733; --ground: #262b24; --lane: #c9cfd5; --grid: #222b34;
+    --car1: #62a6ff; --car2: #ffa040; --truck: #b6a3e8; --ego: #c9d1d9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11161b; --surface: #182029; --ink: #e5eaf0; --muted: #9aa5b1; --line: #2a343e; --chip: #1f2832;
+  --sky: #1c2733; --ground: #262b24; --lane: #c9cfd5; --grid: #222b34;
+  --car1: #62a6ff; --car2: #ffa040; --truck: #b6a3e8; --ego: #c9d1d9; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.6;
+  padding-block: 24px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1120px; margin: 0 auto; display: grid; gap: 16px; }
+h1 { font-size: 24px; margin: 0; text-wrap: balance; }
+h2 { font-size: 16px; margin: 0 0 8px; }
+.lede { margin: 4px 0 0; color: var(--muted); max-width: 76ch; }
+.lede b { color: var(--ink); }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+.views { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 860px) { .views { grid-template-columns: minmax(0, 1fr); } }
+svg { display: block; width: 100%; height: auto; }
+.controls { display: grid; gap: 10px; }
+.ctl { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 14px; }
+.ctl input[type="range"] { flex: 1 1 200px; min-width: 0; }
+.ctl .n { font-family: var(--font-num); min-width: 64px; }
+.sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+td.n, th.n { font-family: var(--font-num); text-align: right; font-variant-numeric: tabular-nums; }
+.formula { font-family: var(--font-num); background: var(--chip); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; display: inline-block; }
+.note { margin: 8px 0 0; color: var(--muted); font-size: 14px; }
+.note b { color: var(--ink); }
+.sky { fill: var(--sky); } .ground { fill: var(--ground); } .lane { stroke: var(--lane); stroke-width: 2; fill: none; }
+.horizon { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 4; }
+.paper { fill: var(--surface); } .grid { stroke: var(--grid); stroke-width: 1; }
+.lbl { font: 500 13px var(--font-body); fill: var(--ink); paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
+.lbl.num { font-family: var(--font-num); }
+.ax { font: 400 11px var(--font-num); fill: var(--muted); }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>照片和俯视图</h1>
+    <p class="lede">同一个场景，左边是前视摄像头拍的照片（1600 × 900，焦距 1000 像素，装在 1.5 米高），右边是俯视图（200 × 200 格，每格 0.512 米）。<b>先在讲义里做完预测再拖滑块。</b></p>
+  </header>
+
+  <section class="views">
+    <div class="panel">
+      <h2>前视照片：近大远小</h2>
+      <svg id="cam" viewBox="0 0 800 450" aria-label="前视摄像头照片：路面、车道线汇到地平线，两辆车和可选的卡车"></svg>
+      <p class="note">公式只有一行：<span class="formula">v = f · y / z + cy</span>。z 是车离相机多远，在分母上，所以远 4 倍、小 4 倍。</p>
+    </div>
+    <div class="panel">
+      <h2>俯视图：一样大，都看得见</h2>
+      <svg id="bev" viewBox="0 0 420 420" aria-label="俯视图格子：自车在中间，前方车辆按真实长度画"></svg>
+      <p class="note">俯视图里一格就是 0.512 米，车长 4.7 米永远是 9.18 格，和离多远无关。</p>
+    </div>
+  </section>
+
+  <section class="panel controls">
+    <div class="ctl"><span class="sw" style="background: var(--car1)"></span>蓝车离我 <input type="range" id="d1" min="5" max="50" step="1" value="10"><span class="n" id="d1v">10 米</span></div>
+    <div class="ctl"><span class="sw" style="background: var(--car2)"></span>橙车离我 <input type="range" id="d2" min="5" max="50" step="1" value="40"><span class="n" id="d2v">40 米</span></div>
+    <div class="ctl"><label><input type="checkbox" id="truck"> <span class="sw" style="background: var(--truck)"></span> 在 15 米放一辆卡车（高 3.5 米）</label></div>
+    <table>
+      <thead><tr><th></th><th class="n">离我</th><th class="n">照片里高（像素）</th><th class="n">俯视图里长（格）</th><th>照片里看得见吗</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </section>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var F = 1000, CX = 800, CY = 450, CAMH = 1.5, SC = 0.5;    // image drawn at half size
+  var RES = 0.512, N = 200, BS = 2;                          // BEV: 200 cells, 2 px per cell in the drawing
+  var NS = "http://www.w3.org/2000/svg";
+  var $ = function (id) { return document.getElementById(id); };
+  function mk(tag, a, p) { var e = document.createElementNS(NS, tag); for (var k in a) e.setAttribute(k, a[k]); if (p) p.appendChild(e); return e; }
+  function proj(xe, ye, ze) { var xc = -ye, yc = CAMH - ze, zc = xe; return [F * xc / zc + CX, F * yc / zc + CY]; }
+  function bev(xe, ye) { return [N / 2 - xe / RES, N / 2 - ye / RES]; }
+  var CAR = { w: 1.9, h: 1.5, l: 4.7 }, TRK = { w: 2.5, h: 3.5, l: 8.0 };
+  function face(v, d) { var bl = proj(d, v.w / 2, 0), tr = proj(d, -v.w / 2, v.h); return { ul: bl[0], vb: bl[1], ur: tr[0], vt: tr[1] }; }
+
+  var cam = $("cam"), bevSvg = $("bev");
+  function drawCam(objs) {
+    cam.innerHTML = "";
+    mk("rect", { "class": "sky", x: 0, y: 0, width: 800, height: CY * SC }, cam);
+    mk("rect", { "class": "ground", x: 0, y: CY * SC, width: 800, height: 450 - CY * SC }, cam);
+    [1.75, -1.75, 5.25, -5.25].forEach(function (y) {
+      var a = proj(2.5, y, 0), b = proj(400, y, 0);
+      mk("line", { "class": "lane", x1: a[0] * SC, y1: a[1] * SC, x2: b[0] * SC, y2: b[1] * SC }, cam);
+    });
+    mk("line", { "class": "horizon", x1: 0, y1: CY * SC, x2: 800, y2: CY * SC }, cam);
+    mk("text", { "class": "ax", x: 8, y: CY * SC - 6 }, cam).textContent = "地平线（v = 450）";
+    objs.slice().sort(function (a, b) { return b.d - a.d; }).forEach(function (o) {   // far first, near paints over
+      var f = face(o.v, o.d);
+      mk("rect", { x: f.ul * SC, y: f.vt * SC, width: (f.ur - f.ul) * SC, height: (f.vb - f.vt) * SC, rx: 3, style: "fill: var(" + o.c + ")" }, cam);
+    });
+    objs.forEach(function (o) {
+      var f = face(o.v, o.d);
+      if (!o.hidden) mk("text", { "class": "lbl num", x: f.ur * SC + 6, y: f.vb * SC - 2 }, cam).textContent = o.d + " 米：" + (f.vb - f.vt).toFixed(1) + " 像素";
+    });
+  }
+  function drawBev(objs) {
+    bevSvg.innerHTML = "";
+    var o = 10;
+    mk("rect", { "class": "paper", x: 0, y: 0, width: 420, height: 420 }, bevSvg);
+    for (var i = 0; i <= N; i += 20) {
+      mk("line", { "class": "grid", x1: o + i * BS, y1: o, x2: o + i * BS, y2: o + N * BS }, bevSvg);
+      mk("line", { "class": "grid", x1: o, y1: o + i * BS, x2: o + N * BS, y2: o + i * BS }, bevSvg);
+    }
+    [1.75, -1.75].forEach(function (y) { var a = bev(51.2, y), b = bev(-51.2, y); mk("line", { "class": "grid", x1: o + a[1] * BS, y1: o + a[0] * BS, x2: o + b[1] * BS, y2: o + b[0] * BS, style: "stroke: var(--muted); stroke-dasharray: 4 4" }, bevSvg); });
+    var e1 = bev(2.35, 0.95), e2 = bev(-2.35, -0.95);
+    mk("rect", { x: o + e1[1] * BS, y: o + e1[0] * BS, width: (e2[1] - e1[1]) * BS, height: (e2[0] - e1[0]) * BS, rx: 2, style: "fill: var(--ego)" }, bevSvg);
+    mk("text", { "class": "ax", x: o + e2[1] * BS + 4, y: o + e2[0] * BS }, bevSvg).textContent = "自车";
+    objs.forEach(function (ob) {
+      var a = bev(ob.d + ob.v.l, ob.v.w / 2), b = bev(ob.d, -ob.v.w / 2);
+      mk("rect", { x: o + a[1] * BS, y: o + a[0] * BS, width: (b[1] - a[1]) * BS, height: (b[0] - a[0]) * BS, rx: 2, style: "fill: var(" + ob.c + ")" }, bevSvg);
+      mk("text", { "class": "lbl num", x: o + b[1] * BS + 6, y: o + (a[0] + b[0]) / 2 * BS + 4 }, bevSvg).textContent = (b[0] - a[0]).toFixed(2) + " 格";
+    });
+    mk("text", { "class": "ax", x: o + 2, y: 416 }, bevSvg).textContent = "一大格 = 20 格 = 10.24 米";
+  }
+  function covered(inner, outer) { return outer.ul <= inner.ul && inner.ur <= outer.ur && outer.vt <= inner.vt && inner.vb <= outer.vb; }
+  function update() {
+    var d1 = +$("d1").value, d2 = +$("d2").value, tk = $("truck").checked;
+    $("d1v").textContent = d1 + " 米"; $("d2v").textContent = d2 + " 米";
+    var objs = [{ name: "蓝车", v: CAR, d: d1, c: "--car1" }, { name: "橙车", v: CAR, d: d2, c: "--car2" }];
+    if (tk) objs.push({ name: "卡车", v: TRK, d: 15, c: "--truck" });
+    objs.forEach(function (a) {
+      a.hidden = objs.some(function (b) { return b !== a && b.d < a.d && covered(face(a.v, a.d), face(b.v, b.d)); });
+    });
+    drawCam(objs); drawBev(objs);
+    var rows = $("rows"); rows.innerHTML = "";
+    objs.forEach(function (ob) {
+      var f = face(ob.v, ob.d), a = bev(ob.d + ob.v.l, 0), b = bev(ob.d, 0);
+      var tr = document.createElement("tr");
+      tr.innerHTML = "<td><span class='sw' style='background: var(" + ob.c + ")'></span> " + ob.name + "</td><td class='n'>" + ob.d + " 米</td><td class='n'>" + (f.vb - f.vt).toFixed(1) + "</td><td class='n'>" + (b[0] - a[0]).toFixed(2) + "</td><td>" + (ob.hidden ? "被挡住了" : "看得见") + "</td>";
+      rows.appendChild(tr);
+    });
+  }
+  ["d1", "d2", "truck"].forEach(function (id) { $(id).addEventListener("input", update); });
+  update();
+})();
+</script>
+
+</body>
+</html>
