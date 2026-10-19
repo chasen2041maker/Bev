@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>body{margin:0}</style>
+</head>
+<body>
+<title>标注解码器</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<style>
+/* Layout: the raw KITTI label line on top (fields colour-coded), then the projected box on the image (left) and the top view in camera coordinates (right); nuScenes chain at the bottom. */
+:root {
+  --bg: #eef1f4; --surface: #ffffff; --ink: #1b222a; --muted: #5b6672; --line: #d5dce3; --chip: #f5f7f9; --grid: #e8ecef;
+  --f-type: #5b6672; --f-trunc: #8a6d3b; --f-alpha: #c4471f; --f-box: #1a9a6c; --f-dim: #7a4fd0; --f-loc: #1e66d6; --f-ry: #e07400;
+  --img: #e6e9ee; --ray: #9aa5b1;
+  --font-body: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-num: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11161b; --surface: #182029; --ink: #e5eaf0; --muted: #9aa5b1; --line: #2a343e; --chip: #1f2832; --grid: #222b34;
+    --f-type: #a7b1bc; --f-trunc: #d9b77a; --f-alpha: #ff8a5c; --f-box: #3fd29a; --f-dim: #b791ff; --f-loc: #62a6ff; --f-ry: #ffa040;
+    --img: #222a33; --ray: #6b7682; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11161b; --surface: #182029; --ink: #e5eaf0; --muted: #9aa5b1; --line: #2a343e; --chip: #1f2832; --grid: #222b34;
+  --f-type: #a7b1bc; --f-trunc: #d9b77a; --f-alpha: #ff8a5c; --f-box: #3fd29a; --f-dim: #b791ff; --f-loc: #62a6ff; --f-ry: #ffa040;
+  --img: #222a33; --ray: #6b7682; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.6;
+  padding-block: 24px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1140px; margin: 0 auto; display: grid; gap: 16px; }
+h1 { font-size: 24px; margin: 0; text-wrap: balance; }
+h2 { font-size: 16px; margin: 0 0 8px; }
+.lede { margin: 4px 0 0; color: var(--muted); max-width: 78ch; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+.line { font: 600 15px var(--font-num); overflow-x: auto; white-space: nowrap; padding: 8px 10px; background: var(--chip); border-radius: 6px; }
+.line span { padding: 0 2px; border-bottom: 3px solid currentColor; margin-right: 6px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; font-size: 13px; color: var(--muted); }
+.legend b { font-weight: 700; }
+.two { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 880px) { .two { grid-template-columns: minmax(0, 1fr); } }
+svg { display: block; width: 100%; height: auto; }
+.ctl { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 14px; margin-top: 10px; }
+.ctl input[type="range"] { flex: 1 1 180px; min-width: 0; }
+.n { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg button { font: 500 13px var(--font-body); color: var(--ink); background: var(--chip); border: 0; padding: 5px 10px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--f-loc); color: var(--surface); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--f-loc); outline-offset: 2px; }
+.read { margin-top: 8px; font-size: 14px; }
+.read b { font-family: var(--font-num); }
+.chain { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; align-items: stretch; }
+@media (max-width: 760px) { .chain { grid-template-columns: minmax(0, 1fr); } }
+.box { background: var(--chip); border-radius: 8px; padding: 8px 10px; min-width: 0; }
+.box .t { font-size: 13px; color: var(--muted); }
+.box .v { font: 600 14px var(--font-num); overflow-wrap: anywhere; }
+.box .how { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.paper { fill: var(--surface); } .imgbg { fill: var(--img); } .grid { stroke: var(--grid); stroke-width: 1; }
+.lbl { font: 500 12px var(--font-body); fill: var(--ink); paint-order: stroke; stroke: var(--surface); stroke-width: 3px; stroke-linejoin: round; }
+.ax { font: 400 11px var(--font-num); fill: var(--muted); }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>标注解码器</h1>
+    <p class="lede">KITTI 训练集 000000 的那一行行人标注，拆开、投影、画回去。用的是这帧真实的相机参数 P2（f 721.54，cx 609.56，cy 172.85）。</p>
+  </header>
+
+  <section class="panel">
+    <h2>原始的一行（颜色对应下面的图）</h2>
+    <div class="line" id="line"></div>
+    <div class="legend">
+      <span><b style="color: var(--f-type)">类别</b></span><span><b style="color: var(--f-trunc)">截断 / 遮挡</b></span><span><b style="color: var(--f-alpha)">alpha 观察角</b></span>
+      <span><b style="color: var(--f-box)">2D 框（人工在照片上画的）</b></span><span><b style="color: var(--f-dim)">高 宽 长</b></span>
+      <span><b style="color: var(--f-loc)">location（相机坐标，x 右 y 下 z 前）</b></span><span><b style="color: var(--f-ry)">rotation_y</b></span>
+    </div>
+  </section>
+
+  <section class="two">
+    <div class="panel">
+      <h2>照片上（放大了行人那一块）</h2>
+      <svg id="img" viewBox="0 0 560 420" aria-label="照片局部：绿色是人工标的 2D 框，蓝色是 3D 框投影的线框"></svg>
+      <div class="ctl">location 当成
+        <span class="seg"><button type="button" id="bBottom" aria-pressed="true">底面中心</button><button type="button" id="bCenter" aria-pressed="false">正中心</button></span>
+      </div>
+      <div class="ctl">rotation_y <input type="range" id="ry" min="-3.14" max="3.14" step="0.01" value="0.01"><span class="n" id="ryv">0.01</span>
+        <button type="button" id="bReset" style="font: 500 13px var(--font-body); padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--chip); color: var(--ink); cursor: pointer">还原 0.01</button></div>
+      <p class="read" id="readImg"></p>
+    </div>
+    <div class="panel">
+      <h2>从上往下看（相机坐标系：x 右，z 前）</h2>
+      <svg id="top" viewBox="0 0 400 420" aria-label="相机坐标系俯视：相机在下方原点，行人的框和朝向箭头，以及视线"></svg>
+      <p class="read" id="readTop"></p>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>nuScenes：同一个框要走三步才能画到照片上（手造样例，数值接近真实）</h2>
+    <div class="chain">
+      <div class="box"><div class="t">世界坐标（sample_annotation）</div><div class="v">(100.0, 230.0, 1.0)</div><div class="how">框存在地图上，不跟车动</div></div>
+      <div class="box"><div class="t">车坐标</div><div class="v">(30.0, 0.0, 1.0)</div><div class="how">× inv(T_global_from_ego)：车在 (100, 200)、朝 +y</div></div>
+      <div class="box"><div class="t">相机坐标</div><div class="v">(0.0, 0.5, 28.5)</div><div class="how">× inv(T_ego_from_cam)：前视相机装在车前 1.5 米、高 1.5 米</div></div>
+      <div class="box"><div class="t">像素</div><div class="v">(816.3, 513.7)</div><div class="how">× K 再除以深度：f 1266.4，cx 816.3，cy 491.5</div></div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var LINE = "Pedestrian 0.00 0 -0.20 712.40 143.00 810.73 307.92 1.89 0.48 1.20 1.84 1.47 8.41 0.01".split(" ");
+  var FCOL = ["--f-type", "--f-trunc", "--f-trunc", "--f-alpha", "--f-box", "--f-box", "--f-box", "--f-box", "--f-dim", "--f-dim", "--f-dim", "--f-loc", "--f-loc", "--f-loc", "--f-ry"];
+  var $ = function (id) { return document.getElementById(id); };
+  $("line").innerHTML = LINE.map(function (v, i) { return "<span style='color: var(" + FCOL[i] + ")'>" + v + "</span>"; }).join("");
+  var P2 = [[721.5377, 0, 609.5593, 44.85728], [0, 721.5377, 172.854, 0.2163791], [0, 0, 1, 0.002745884]];
+  var D = { h: 1.89, w: 0.48, l: 1.20, x: 1.84, y: 1.47, z: 8.41 }, LBOX = [712.40, 143.00, 810.73, 307.92];
+  var state = { ry: 0.01, bottom: true };
+  var NS = "http://www.w3.org/2000/svg";
+  function mk(tag, a, p) { var e = document.createElementNS(NS, tag); for (var k in a) e.setAttribute(k, a[k]); if (p) p.appendChild(e); return e; }
+  function f2(v) { return (Math.abs(v) < 0.005 ? 0 : v).toFixed(2).replace(/^-/, "−"); }
+  function corners(ry, yc) {
+    var h = D.h, w = D.w, l = D.l, xs = [l / 2, l / 2, -l / 2, -l / 2, l / 2, l / 2, -l / 2, -l / 2], ys = [0, 0, 0, 0, -h, -h, -h, -h],
+      zs = [w / 2, -w / 2, -w / 2, w / 2, w / 2, -w / 2, -w / 2, w / 2], c = Math.cos(ry), s = Math.sin(ry), out = [];
+    for (var i = 0; i < 8; i++) out.push([c * xs[i] + s * zs[i] + D.x, ys[i] + yc, -s * xs[i] + c * zs[i] + D.z]);
+    return out;
+  }
+  function proj(p) { var r = P2.map(function (row) { return row[0] * p[0] + row[1] * p[1] + row[2] * p[2] + row[3]; }); return [r[0] / r[2], r[1] / r[2]]; }
+  function iou(a, b) {
+    var iw = Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0])), ih = Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
+    var inter = iw * ih, ar = function (r) { return (r[2] - r[0]) * (r[3] - r[1]); };
+    return inter / (ar(a) + ar(b) - inter);
+  }
+  var EDGES = [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]];
+  // image crop: u 560..1000, v 60..390 -> 560 x 420 drawing at scale 1.27
+  var U0 = 590, V0 = 60, SC = 1.25;
+  var img = $("img");
+  function drawImg() {
+    img.innerHTML = "";
+    mk("rect", { "class": "imgbg", x: 0, y: 0, width: 560, height: 420 }, img);
+    mk("line", { x1: 0, y1: (172.854 - V0) * SC, x2: 560, y2: (172.854 - V0) * SC, style: "stroke: var(--ray); stroke-dasharray: 4 4" }, img);
+    mk("text", { "class": "ax", x: 6, y: (172.854 - V0) * SC - 5 }, img).textContent = "cy = 172.9（地平线附近）";
+    mk("rect", { x: (LBOX[0] - U0) * SC, y: (LBOX[1] - V0) * SC, width: (LBOX[2] - LBOX[0]) * SC, height: (LBOX[3] - LBOX[1]) * SC, style: "fill: none; stroke: var(--f-box); stroke-width: 2.5" }, img);
+    var yc = state.bottom ? D.y : D.y + D.h / 2;
+    var uv = corners(state.ry, yc).map(proj);
+    EDGES.forEach(function (e, k) {
+      mk("line", { x1: (uv[e[0]][0] - U0) * SC, y1: (uv[e[0]][1] - V0) * SC, x2: (uv[e[1]][0] - U0) * SC, y2: (uv[e[1]][1] - V0) * SC,
+        style: "stroke: var(--f-loc); stroke-width: " + (k < 4 ? 2.4 : 1.6) }, img);
+    });
+    var loc = proj([D.x, D.y, D.z]);
+    mk("circle", { cx: (loc[0] - U0) * SC, cy: (loc[1] - V0) * SC, r: 5, style: "fill: var(--f-loc); stroke: var(--surface); stroke-width: 2" }, img);
+    mk("text", { "class": "lbl", x: (loc[0] - U0) * SC + 8, y: (loc[1] - V0) * SC + 16 }, img).textContent = "location (1.84, 1.47, 8.41)";
+    var xs = uv.map(function (p) { return p[0]; }), ys = uv.map(function (p) { return p[1]; });
+    var pb = [Math.min.apply(null, xs), Math.min.apply(null, ys), Math.max.apply(null, xs), Math.max.apply(null, ys)];
+    $("readImg").innerHTML = "3D 框投影后的外接框 <b>(" + pb.map(function (v) { return v.toFixed(1); }).join(", ") + ")</b>；人工 2D 框 <b>(712.4, 143.0, 810.7, 307.9)</b>；IoU = <b>" + iou(pb, LBOX).toFixed(2) + "</b>" +
+      (state.bottom ? "。底面中心：粗线（底面 4 条边）落在脚下。" : "。当成正中心：整个框往下掉了半个身高。");
+  }
+  // top view in camera coords: x right (horizontal), z forward (up). camera at bottom centre
+  var top = $("top"), TS = 34, TX = 140, TZ = 400;
+  function tx(x) { return TX + x * TS; } function tz(z) { return TZ - z * TS; }
+  function drawTop() {
+    top.innerHTML = "";
+    mk("rect", { "class": "paper", x: 0, y: 0, width: 400, height: 420 }, top);
+    for (var g = -4; g <= 7; g++) mk("line", { "class": "grid", x1: tx(g), y1: 0, x2: tx(g), y2: 420 }, top);
+    for (var k = 0; k <= 12; k++) mk("line", { "class": "grid", x1: 0, y1: tz(k), x2: 400, y2: tz(k) }, top);
+    mk("polygon", { points: [tx(0), tz(0), tx(-4), tz(-0.3), tx(4), tz(-0.3)].join(" ") + "", style: "fill: var(--muted)" }, top);
+    mk("text", { "class": "ax", x: tx(0) + 8, y: tz(0) - 6 }, top).textContent = "相机";
+    mk("line", { x1: tx(0), y1: tz(0), x2: tx(D.x * 1.3), y2: tz(D.z * 1.3), style: "stroke: var(--ray); stroke-dasharray: 5 4" }, top);
+    var c = corners(state.ry, D.y).slice(0, 4);
+    mk("polygon", { points: c.map(function (p) { return tx(p[0]).toFixed(1) + "," + tz(p[2]).toFixed(1); }).join(" "), style: "fill: var(--f-loc); fill-opacity: .18; stroke: var(--f-loc); stroke-width: 2" }, top);
+    var hx = Math.cos(state.ry), hz = -Math.sin(state.ry);   // heading = rotated local x
+    mk("line", { x1: tx(D.x), y1: tz(D.z), x2: tx(D.x + hx * 1.6), y2: tz(D.z + hz * 1.6), style: "stroke: var(--f-ry); stroke-width: 3" }, top);
+    mk("circle", { cx: tx(D.x + hx * 1.6), cy: tz(D.z + hz * 1.6), r: 4, style: "fill: var(--f-ry)" }, top);
+    mk("text", { "class": "lbl", x: tx(D.x + hx * 1.6) + 6, y: tz(D.z + hz * 1.6) - 4, style: "fill: var(--f-ry)" }, top).textContent = "朝向（长 l 的方向）";
+    mk("text", { "class": "ax", x: 6, y: 14 }, top).textContent = "一格 1 米";
+    var view = Math.atan2(D.x, D.z), alpha = state.ry - view;
+    alpha = Math.atan2(Math.sin(alpha), Math.cos(alpha));
+    $("readTop").innerHTML = "视线方向 atan2(x, z) = atan2(1.84, 8.41) = <b>" + f2(view) + "</b>；rotation_y = <b>" + f2(state.ry) + "</b>；alpha = rotation_y − 视线 = <b>" + f2(alpha) + "</b>（标注里是 −0.20）。<br>rotation_y 0 = 朝右，−1.57 = 朝前（和你同向），+1.57 = 朝你开过来。";
+  }
+  function render() { $("ryv").textContent = f2(state.ry); drawImg(); drawTop(); }
+  $("ry").addEventListener("input", function (e) { state.ry = +e.target.value; render(); });
+  $("bReset").addEventListener("click", function () { state.ry = 0.01; $("ry").value = 0.01; render(); });
+  $("bBottom").addEventListener("click", function () { state.bottom = true; $("bBottom").setAttribute("aria-pressed", "true"); $("bCenter").setAttribute("aria-pressed", "false"); render(); });
+  $("bCenter").addEventListener("click", function () { state.bottom = false; $("bBottom").setAttribute("aria-pressed", "false"); $("bCenter").setAttribute("aria-pressed", "true"); render(); });
+  render();
+})();
+</script>
+
+</body>
+</html>

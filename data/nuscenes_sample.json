@@ -1,0 +1,24 @@
+{
+  "_说明": "按 nuScenes 表格字段手造的一组样例（数值接近真实，方便手算）。真实数据里这些记录分散在 ego_pose.json、calibrated_sensor.json、sample_annotation.json，用 token 互相引用。",
+  "ego_pose": {
+    "token": "ego_pose_demo",
+    "timestamp": 1532402927612460,
+    "translation": [100.0, 200.0, 0.0],
+    "rotation": [0.7071068, 0.0, 0.0, 0.7071068]
+  },
+  "calibrated_sensor": {
+    "token": "calib_cam_front_demo",
+    "sensor": "CAM_FRONT",
+    "translation": [1.5, 0.0, 1.5],
+    "rotation": [0.5, -0.5, 0.5, -0.5],
+    "camera_intrinsic": [[1266.4, 0.0, 816.3], [0.0, 1266.4, 491.5], [0.0, 0.0, 1.0]]
+  },
+  "sample_annotation": {
+    "token": "ann_demo",
+    "category_name": "vehicle.car",
+    "translation": [100.0, 230.0, 1.0],
+    "size": [1.9, 4.7, 1.5],
+    "rotation": [0.7071068, 0.0, 0.0, 0.7071068]
+  },
+  "image_size": [1600, 900]
+}
