@@ -1,23 +1,103 @@
-# Bev：从零真懂 BEV 感知
+<div align="center">
 
-把「自动驾驶之心」BEV 感知课（5 章）和 Transformer 分割检测课里用得上的部分，提炼成一个**能跑、能测、能讲清**的学习项目，再补上 2023–2026 的新路线（稀疏查询、占用网络、端到端）。
+<img src="docs/images/banner.svg" alt="Bev：从零真懂 BEV 感知" width="100%">
 
-**学法**：每个知识点都落到一段自己手敲的核心代码、一个用手算数字核对的测试、一个能看见现象的小实验，外加一张图或一段动画。数据生成、训练循环、可视化、测试由助手写；参考答案放在 `solutions/`，先自己敲，卡住再看。
+<h3>19 课，把 BEV 感知从针孔相机一路讲到稀疏查询、占用网络和端到端</h3>
 
-**和主线的关系**：主线是 [highway-sim-eval](https://github.com/chasen2041maker/highway-sim-eval)（仿真评测）。这个仓库是「甜点」，穿插着学，一次坐下只学一样。目标：2027 年 7–8 月跳槽前，BEV 相关的面试题都能从原理讲到代码。
+<p>每一课 = 图解讲义 + 交互动画 + 自己敲的核心代码 + 能手算的测试 + 可复现的实验</p>
 
-## 怎么学一课
+[![Python](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![NumPy](https://img.shields.io/badge/NumPy-from%20L01-013243?logo=numpy&logoColor=white)](https://numpy.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-from%20L06-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![Tests](https://img.shields.io/badge/tests-pytest-0A9EDC?logo=pytest&logoColor=white)](#快速开始)
+[![Lessons](https://img.shields.io/badge/lessons-3%20%2F%2019-2a78d6)](#课程地图)
+[![Data](https://img.shields.io/badge/data-KITTI%20%C2%B7%20nuScenes%20%C2%B7%20CARLA-6b5b95)](#课程地图)
 
-1. 读 `docs/Lxx_*.md` 开头的「这课回答什么问题」和配图 / 动画。
-2. **先预测**（文档里有一道 ① ② 选择题），再动手。
-3. 在 `bev/` 里手敲本课的核心函数（文档里标了「你来敲」的部分）。
+[预览](#预览) · [特点](#特点) · [学习路线](#学习路线) · [快速开始](#快速开始) · [课程地图](#课程地图) · [课件对照表](#课件对照表)
+
+</div>
+
+---
+
+BEV 课程的 PPT 每页只有几行要点：“LSS：先为每个像素生成所有可能深度的点”，一句话就过去了。这个仓库把每个要点拆成四件事：**一个能看见的现象、一行公式、一段自己写的代码、一个用手算数字核对的测试**。学完能从原理讲到代码，也能指出课件里的错误，比如 009 第 10 页的投影公式漏了光心 cx、cy。
+
+## 预览
+
+<table>
+  <tr>
+    <td width="33%" valign="top"><img src="docs/images/l01_preview.png" alt="L01 照片和俯视图"><br><b>L01 · 照片和俯视图</b><br><sub>同一辆车，照片里远 4 倍小 4 倍，俯视图里一样大；卡车挡住的车在俯视图里还在。</sub></td>
+    <td width="33%" valign="top"><img src="docs/images/l02_preview.png" alt="L02 六个相机"><br><b>L02 · 六个相机</b><br><sub>拖动一个点，看它落在哪个相机的哪个像素，外参、内参、除以深度每一步的数字都在。</sub></td>
+    <td width="33%" valign="top"><img src="docs/images/l03_preview.png" alt="L03 标注解码器"><br><b>L03 · 标注解码器</b><br><sub>KITTI 000000 的一行标注投回照片：location 是底面中心（IoU 0.73），不是正中心（0.32）。</sub></td>
+  </tr>
+</table>
+
+<sub>动画都在 <code>docs/*.html</code>，下载后双击就能打开，不需要联网和安装。</sub>
+
+## 特点
+
+| 做到什么 | 怎么做到的 |
+| --- | --- |
+| **讲透，不罗列** | 每个公式逐个符号解释，配一组能手算的数字；课件里的错误直接标出来更正 |
+| **自己写核心** | 每课 1–3 个核心函数自己敲；数据、训练循环、可视化、参考答案（`solutions/`）已写好 |
+| **数字可核对** | 测试用手算值（例：u = 1000 × (−2) ÷ 10 + 800 = 600），真实数据用 KITTI 000000 的标注和标定核对 |
+| **每课一个动画** | 拖动、切换条件，看每一步的中间结果 |
+| **不漏一页** | 课件对照表：4 份 PPT 每一页在哪一课讲 |
+| **跟上 2023–2026** | 课件之外补上稀疏查询（Sparse4D）、占用网络（FlashOcc、GaussianFormer）、BEV 到端到端（UniAD、SparseDrive、DiffusionDrive） |
+| **接上工程** | 最后一课用 CARLA 采多相机数据训练迷你 BEV，放回 [highway-sim-eval](https://github.com/chasen2041maker/highway-sim-eval) 闭环，看感知误差怎么影响开车 |
+
+## 学习路线
+
+```mermaid
+flowchart LR
+    P0["<b>0 地基</b><br/>L01–L04<br/>投影 · 坐标链 · 数据集 · 指标"]
+    P1["<b>1 先猜深度再抬进 3D</b><br/>L05–L08<br/>Pseudo-LiDAR · LSS · 体素池化"]
+    P2["<b>2 注意力与查询</b><br/>L09–L10<br/>自注意力 · DETR · 可变形注意力"]
+    P3["<b>3 拿 3D 点去图里取特征</b><br/>L11–L13<br/>DETR3D · PETR · BEVFormer"]
+    P4["<b>4 激光雷达与融合</b><br/>L14–L15<br/>柱子化 · BEVFusion · 蒸馏"]
+    P5["<b>5 2023–2026 新路线</b><br/>L16–L19<br/>稀疏查询 · 占用网络 · 端到端 · CARLA"]
+    P0 --> P1 --> P4
+    P0 --> P2 --> P3
+    P1 --> P3
+    P3 --> P5
+    P4 --> P5
+    classDef done fill:#e3edfb,stroke:#1e66d6,color:#0b0b0b
+    classDef todo fill:#f4f4f2,stroke:#b5b3ad,color:#52514e,stroke-dasharray:4 3
+    class P0 done
+    class P1,P2,P3,P4,P5 todo
+```
+
+两条主线对应从照片到俯视图的两种思路：**2D → 3D**（先猜每个像素的深度，把特征“抬”进空间，LSS 一系）和 **3D → 2D**（拿 3D 里的点投到照片上去取特征，DETR3D、BEVFormer 一系）。
+
+## 快速开始
+
+```bash
+git clone https://github.com/chasen2041maker/Bev.git
+cd Bev
+python -m pip install -r requirements.txt
+
+python -m pytest tests/test_l01_geometry.py -v   # 一开始是失败的：核心函数等你来敲
+python -m labs.l01_scale_and_occlusion          # 敲完、测试通过后跑实验
+```
+
+讲义从 [`docs/L01_perspective_vs_bev.md`](docs/L01_perspective_vs_bev.md) 开始。
+
+## 一课怎么学
+
+1. 读讲义开头的「这课回答什么问题」，打开动画。
+2. **先预测**：讲义里有一道 ① ② 选择题，先写下答案再动手。
+3. 在 `bev/` 里敲本课的核心函数（讲义里标了「你来敲」）。卡住先看文档字符串，再看 `solutions/`。
 4. 跑测试：`python -m pytest tests/test_lxx_*.py -v`
-5. 跑实验：`python -m labs.lxx_*`，对照预测。
-6. 用一句话写结论，回答文档末尾的面试题。
+5. 跑实验：`python -m labs.lxx_*`，对照你的预测。
+6. 用一句话写结论，答完讲义末尾的面试题。
 
 ## 课程地图
 
-★ = 面试高频，优先学透。「课件」列指 `智驾算法\bev\资料课件\` 里的文件和页码。
+★ = 面试高频，优先学透。「课件」列指自动驾驶之心 BEV 课程的 PDF 文件和页码。
+
+| 状态 | 课 |
+| --- | --- |
+| ✅ 讲义、动画、代码、测试、实验都已就绪 | L01 · L02 · L03 |
+| 编写中（始终领先学习进度 2–3 课） | L04 起 |
 
 ### 第 0 部分：地基（课件第 1 章 + 第 2 章开头）
 
@@ -68,16 +148,40 @@
 | L18 ★ | 从 BEV 到端到端：UniAD、VAD、SparseDrive、DiffusionDrive 把感知接到规划的哪里？ | 追踪一个开源端到端模型的张量形状（不训练）；面试一页纸 |
 | L19 | 综合实战（家里 4080）：CARLA 采多相机数据 → 训练迷你 BEV → 放回 highway-sim-eval 闭环，替换真值 | 数据采集、训练、闭环评测（和主线 A8 合流） |
 
-## 进度
+## 项目结构
 
-| 课 | 讲义 | 动画 | 代码 / 测试 / 实验 | 你学到哪 |
-| --- | --- | --- | --- | --- |
-| L01 | ✅ | ✅ | ✅ | |
-| L02 | ✅ | ✅ | ✅ | |
-| L03 | ✅ | ✅ | ✅ | |
-| L04 起 | 按你的进度往后做，始终领先 2–3 课 | | | |
+```text
+Bev/
+├── docs/          每课讲义（Lxx_*.md）和动画（*.html，双击打开）
+│   └── images/    README 用的图
+├── bev/           核心代码：你手敲的函数在这里
+│   ├── geometry.py    L01 针孔投影、俯视图格子
+│   ├── camera.py      L02 齐次变换、投影、反投影
+│   ├── datasets.py    L03 KITTI 标注、3D 框角点、nuScenes 坐标链
+│   ├── rig.py         6 相机支架（已写好）
+│   └── pose.py        四元数和位姿（已写好）
+├── labs/          每课实验脚本
+├── tests/         测试（数字来自手算或真实数据）
+├── data/          样例数据（KITTI 000000 的标注和标定、nuScenes 字段格式样例）
+└── solutions/     参考答案
+```
 
-## 课件对照表：PPT 每一页在哪一课讲
+## 环境
+
+| 设备 | 用途 | 需要 |
+| --- | --- | --- |
+| 任意电脑（只用 CPU） | L01–L05 | `numpy`、`matplotlib`、`pytest` |
+| 同上 | L06 起 | 再加 CPU 版 PyTorch：`pip install torch --index-url https://download.pytorch.org/whl/cpu` |
+| 有 NVIDIA 显卡（作者用 RTX 4080 Laptop 12 GB） | L08 训练、L19 CARLA 采数据和训练 | CUDA 版 PyTorch、CARLA 0.9.16 |
+
+大模型（BEVFormer 全量等）只读结构、跑推理，不在本仓库里复现完整训练。
+
+## 课件对照表
+
+<details>
+<summary>展开：4 份 PPT 加 Transformer 课用到的两讲，每一页在哪一课讲</summary>
+
+<br>
 
 页码是 PDF 的页码。“—”是封面、目录、二维码页。
 
@@ -146,27 +250,21 @@
 | 第 3 节 | DETR、Deformable DETR、Conditional / DAB / Hybrid DETR、Mask2Former | L10（DETR、可变形注意力），其余 L10 提一句 |
 | 第六讲 | 点云 Transformer、点云补全、占用网络 | L14、L17 |
 
-## 环境
+</details>
 
-- 笔记本（只用 CPU）：L01–L05 只需要 `numpy`、`matplotlib`、`pytest`；L06 起加 CPU 版 PyTorch。
-- 家里电脑（RTX 4080 12 GB）：L08 训练、L19 CARLA 数据和训练。
-- 不在 Windows 上复现 BEVFormer 全量训练（mmdet3d 难配、nuScenes 太大）；大模型只读结构、跑推理。
+## 参考
 
-## 目录
+**课件**：自动驾驶之心《BEV 感知》课程（5 章）与《基于 Transformer 的分割检测》课程。本仓库是按课件提炼重写的学习项目，不包含原课件。
 
-```text
-Bev/
-├─ docs/        每课讲义（Lxx_*.md）和动画（*.html，双击打开）
-├─ bev/         你手敲的核心代码
-├─ labs/        每课实验脚本（助手写）
-├─ tests/       测试（数字来自手算）
-├─ data/        合成数据生成器（助手写）
-└─ solutions/   参考答案（先自己敲，卡住再看）
-```
+**数据**：[KITTI](https://www.cvlibs.net/datasets/kitti/)（Geiger et al., CVPR 2012，CC BY-NC-SA 3.0），`data/` 里只摘录了训练集 000000 / 000001 的几行标注和标定；[nuScenes](https://www.nuscenes.org/)（Caesar et al., CVPR 2020），`data/` 里是按它的字段格式手造的样例，不含原始数据。
 
-## 新路线的依据（2026-10 调研）
+**2023–2026 新路线的依据**（2026-10 调研）：
 
 - 稀疏感知模型（DETR3D、PETR 系、Sparse4D、SparseBEV、SparseOcc、GaussianFormer）不建稠密俯视图，用一小组查询直接从多视角图像取特征：[SQS（2025）](https://arxiv.org/html/2509.16588)；[Sparse4D（TPAMI 2026）](https://www.computer.org/csdl/journal/tp/2026/09/11498453/2g3CJnXusH6)。
 - 占用感知综述：[Information Fusion 2025](https://github.com/HuaiyuanXu/3D-Occupancy-Perception)；[FlashOcc](https://arxiv.org/pdf/2311.12058)；[GaussianFormer-2](https://arxiv.org/pdf/2412.04384)。
 - 稀疏端到端：[SparseDrive](https://arxiv.org/html/2405.19620v2)。BEV 综述（单模态 → 多模态 → 车路协同）：[2508.07560](https://arxiv.org/pdf/2508.07560)。
 - 行业：头部车企以端到端为骨架，世界模型多在云端当仿真器（[虎嗅 2026-08-03](https://www.huxiu.com/article/4880232.html)）；量产模型缺少可比的闭环评测（[新出行 2026-08](https://www.xchuxing.com/article/174662)）。BEV / 占用 / 查询仍是这些模型内部的表示，也是面试必问的地基。
+
+## 和主线的关系
+
+主线是 [highway-sim-eval](https://github.com/chasen2041maker/highway-sim-eval)（基于 CARLA 的仿真评测与数据闭环）。本仓库穿插着学，一次只学一样；L19 把两条线接起来：用这里训练的 BEV 感知替换仿真里的真值，再用评测平台量感知误差对驾驶的影响。
